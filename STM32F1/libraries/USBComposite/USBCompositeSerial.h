@@ -1,19 +1,20 @@
 #ifndef _COMPOSITE_SERIAL_H_
 #define _COMPOSITE_SERIAL_H_
 
-#include "USBComposite.h"
 #include "usb_composite_serial.h"
 
 class USBCompositeSerial : public Stream {
 private:
 	bool enabled = false;
+    uint32 txPacketSize = 64;
+    uint32 rxPacketSize = 64;
 public:
 	void begin(long speed=9600);
 	void end();
 	static bool init(USBCompositeSerial* me);
 	bool registerComponent();
 
-	operator bool() { return true; } // Roger Clark. This is needed because in cardinfo.ino it does if (!Serial) . It seems to be a work around for the Leonardo that we needed to implement just to be compliant with the API
+	operator bool() { return USBComposite.isReady(); } // Roger Clark. This is needed because in cardinfo.ino it does if (!Serial) . It seems to be a work around for the Leonardo that we needed to implement just to be compliant with the API
 
     virtual int available(void);// Changed to virtual
 
@@ -34,6 +35,14 @@ public:
     uint8 getDTR();
     uint8 isConnected();
     uint8 pending();
+    
+    void setRXPacketSize(uint32 size=64) {
+        rxPacketSize = size;
+    }
+
+    void setTXPacketSize(uint32 size=64) {
+        txPacketSize = size;
+    }
 };
 
 extern USBCompositeSerial CompositeSerial;

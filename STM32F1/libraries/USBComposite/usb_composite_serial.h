@@ -56,15 +56,13 @@ extern USBCompositePart usbSerialPart;
 #define USBHID_CDCACM_CONTROL_LINE_RTS       (0x02)
 
 #define USBHID_CDCACM_MANAGEMENT_EPSIZE      0x10
-#define USBHID_CDCACM_RX_EPSIZE              0x40
-#define USBHID_CDCACM_TX_EPSIZE              0x40
+//#define USBHID_CDCACM_RX_EPSIZE              0x40
+//#define USBHID_CDCACM_TX_EPSIZE              0x40
 /*
  * Descriptors, etc.
  */
 
 
-
-#define USBHID_CDCACM_CTRL_ENDP            0
 
 typedef struct
 {
@@ -97,15 +95,15 @@ typedef struct
  * CDC ACM interface
  */
 
-void   composite_cdcacm_putc(char ch);
 uint32 composite_cdcacm_tx(const uint8* buf, uint32 len);
 uint32 composite_cdcacm_rx(uint8* buf, uint32 len);
 uint32 composite_cdcacm_peek(uint8* buf, uint32 len);
 uint32 composite_cdcacm_peek_ex(uint8* buf, uint32 offset, uint32 len);
+void composite_cdcacm_setTXEPSize(uint32_t size);
+void composite_cdcacm_setRXEPSize(uint32_t size);
 
 uint32 composite_cdcacm_data_available(void); /* in RX buffer */
 uint16 composite_cdcacm_get_pending(void);
-uint8 usb_is_transmitting(void);
 
 uint8 composite_cdcacm_get_dtr(void);
 uint8 composite_cdcacm_get_rts(void);
@@ -146,9 +144,7 @@ int composite_cdcacm_get_n_data_bits(void); /* bDataBits */
 
 void composite_cdcacm_set_hooks(unsigned hook_flags, void (*hook)(unsigned, void*));
 
-static inline __always_inline void composite_cdcacm_remove_hooks(unsigned hook_flags) {
-    composite_cdcacm_set_hooks(hook_flags, 0);
-}
+#define composite_cdcacm_remove_hooks(hook_flags) composite_cdcacm_remove_hooks(hook_flags, 0)
 
 #ifdef __cplusplus
 }

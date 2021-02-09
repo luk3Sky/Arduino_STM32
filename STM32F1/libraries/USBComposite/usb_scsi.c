@@ -4,7 +4,6 @@
 #include "usb_scsi.h"
 
 #include <libmaple/usb.h>
-#include <libmaple/nvic.h>
 #include <libmaple/delay.h>
 
 /* Private headers */
@@ -73,6 +72,7 @@ void scsi_inquiry_cmd(uint8_t lun) {
 }
 
 void scsi_request_sense_cmd(uint8_t lun) {
+  (void)lun;
   uint8_t requestSenseDataLength;
   if (usb_mass_CBW.CB[4] <= SCSI_REQUEST_SENSE_DATA_LEN) {
     requestSenseDataLength = usb_mass_CBW.CB[4];
@@ -83,14 +83,17 @@ void scsi_request_sense_cmd(uint8_t lun) {
 }
 
 void scsi_start_stop_unit_cmd(uint8_t lun) {
+  (void)lun;
   usb_mass_bot_set_csw(BOT_CSW_CMD_PASSED, BOT_SEND_CSW_ENABLE);
 }
 
 void scsi_mode_sense6_cmd(uint8_t lun) {
+  (void)lun;
   usb_mass_transfer_data_request(SCSI_modeSense6Data, SCSI_MODE_SENSE6_DATA_LEN);
 }
 
 void scsi_mode_sense10_cmd(uint8_t lun) {
+  (void)lun;
   usb_mass_transfer_data_request(SCSI_modeSense10Data, SCSI_MODE_SENSE10_DATA_LEN);
 }
 
@@ -160,7 +163,7 @@ void scsi_write10_cmd(uint8_t lun, uint32_t lba, uint32_t blockNbr) {
 
     if ((usb_mass_CBW.bmFlags & 0x80) == 0) {
       usb_mass_botState = BOT_STATE_DATA_OUT;
-      SetEPRxStatus(USB_MASS_RX_ENDP, USB_EP_ST_RX_VAL);
+      usb_generic_enable_rx(USB_MASS_RX_ENDPOINT_INFO); 
     } else {
       usb_mass_bot_abort(BOT_DIR_IN);
       scsi_set_sense_data(usb_mass_CBW.bLUN, SCSI_ILLEGAL_REQUEST, SCSI_INVALID_FIELED_IN_COMMAND);
@@ -184,6 +187,7 @@ void scsi_test_unit_ready_cmd(uint8_t lun) {
 }
 
 void scsi_verify10_cmd(uint8_t lun) {
+  (void)lun;
   if ((usb_mass_CBW.dDataLength == 0) && !(usb_mass_CBW.CB[1] & SCSI_BLKVFY))/* BLKVFY not set*/ {
     usb_mass_bot_set_csw(BOT_CSW_CMD_PASSED, BOT_SEND_CSW_ENABLE);
   } else {
@@ -205,11 +209,13 @@ void scsi_format_cmd(uint8_t lun) {
 }
 
 void scsi_set_sense_data(uint8_t lun, uint8_t sensKey, uint8_t asc) {
+  (void)lun;
   SCSI_senseData[2] = sensKey;
   SCSI_senseData[12] = asc;
 }
 
 void scsi_invalid_cmd(uint8_t lun) {
+  (void)lun;
   if (usb_mass_CBW.dDataLength == 0) {
     usb_mass_bot_abort(BOT_DIR_IN);
   } else {
@@ -249,31 +255,30 @@ uint8_t scsi_address_management(uint8_t lun, uint8_t cmd, uint32_t lba, uint32_t
   return (TRUE);
 }
 
-void scsi_read_memory(uint8_t lun, uint32_t memoryOffset, uint32_t transferLength) {
-  static uint32_t offset, length;
+void scsi_read_memory(uint8_t lun, uint32_t startSector, uint32_t numSectors) {
+  static uint32_t length;
+  static uint64_t offset;
 
   if (SCSI_transferState == SCSI_TXFR_IDLE) {
-    offset = memoryOffset * SCSI_BLOCK_SIZE;
-    length = transferLength * SCSI_BLOCK_SIZE;
+    offset = (uint64_t)startSector * SCSI_BLOCK_SIZE;
+    length = numSectors * SCSI_BLOCK_SIZE;
     SCSI_transferState = SCSI_TXFR_ONGOING;
   }
 
   if (SCSI_transferState == SCSI_TXFR_ONGOING) {
     if (SCSI_blockReadCount == 0) {
-      usb_mass_mal_read_memory(lun, offset, SCSI_dataBuffer, SCSI_BLOCK_SIZE);
-
-      usb_mass_sil_write(SCSI_dataBuffer, MAX_BULK_PACKET_SIZE);
+      usb_mass_mal_read_memory(lun, SCSI_dataBuffer, (uint32_t)(offset/SCSI_BLOCK_SIZE), 1);
 
       SCSI_blockReadCount = SCSI_BLOCK_SIZE - MAX_BULK_PACKET_SIZE;
       SCSI_blockOffset = MAX_BULK_PACKET_SIZE;
-    } else {
-      usb_mass_sil_write(SCSI_dataBuffer + SCSI_blockOffset, MAX_BULK_PACKET_SIZE);
 
+      usb_mass_sil_write(SCSI_dataBuffer, MAX_BULK_PACKET_SIZE);
+    } else {
       SCSI_blockReadCount -= MAX_BULK_PACKET_SIZE;
       SCSI_blockOffset += MAX_BULK_PACKET_SIZE;
-    }
 
-    SetEPTxStatus(USB_MASS_TX_ENDP, USB_EP_ST_TX_VAL);
+      usb_mass_sil_write(SCSI_dataBuffer + SCSI_blockOffset, MAX_BULK_PACKET_SIZE);
+    }
 
     offset += MAX_BULK_PACKET_SIZE;
     length -= MAX_BULK_PACKET_SIZE;
@@ -293,14 +298,15 @@ void scsi_read_memory(uint8_t lun, uint32_t memoryOffset, uint32_t transferLengt
   }
 }
 
-void scsi_write_memory(uint8_t lun, uint32_t memoryOffset, uint32_t transferLength) {
-  static uint32_t offset, length;
+void scsi_write_memory(uint8_t lun, uint32_t startSector, uint32_t numSectors) {
+  static uint32_t length;
+  static uint64_t offset;
   uint32_t idx;
   uint32_t temp = SCSI_counter + 64;
 
   if (SCSI_transferState == SCSI_TXFR_IDLE) {
-    offset = memoryOffset * SCSI_BLOCK_SIZE;
-    length = transferLength * SCSI_BLOCK_SIZE;
+    offset = (uint64_t)startSector * SCSI_BLOCK_SIZE;
+    length = numSectors * SCSI_BLOCK_SIZE;
     SCSI_transferState = SCSI_TXFR_ONGOING;
   }
 
@@ -315,11 +321,11 @@ void scsi_write_memory(uint8_t lun, uint32_t memoryOffset, uint32_t transferLeng
 
     if (!(length % SCSI_BLOCK_SIZE)) {
       SCSI_counter = 0;
-      usb_mass_mal_write_memory(lun, offset - SCSI_BLOCK_SIZE, SCSI_dataBuffer, SCSI_BLOCK_SIZE);
+      usb_mass_mal_write_memory(lun, SCSI_dataBuffer, (uint32_t)(offset/SCSI_BLOCK_SIZE) - 1, 1);
     }
 
     usb_mass_CSW.dDataResidue -= usb_mass_dataLength;
-    SetEPRxStatus(USB_MASS_RX_ENDP, USB_EP_ST_RX_VAL); /* enable the next transaction*/
+    usb_generic_enable_rx(USB_MASS_RX_ENDPOINT_INFO); /* enable the next transaction*/ // TODO
 
     // TODO: Led_RW_ON();
   }

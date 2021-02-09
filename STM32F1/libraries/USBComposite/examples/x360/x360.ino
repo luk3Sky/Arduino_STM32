@@ -1,8 +1,10 @@
 #include <USBComposite.h>
 
+USBXBox360 XBox360;
+
 void setup() {
   XBox360.begin();
-  delay(1000);
+  while (!USBComposite);
 }
 
 void loop() {
